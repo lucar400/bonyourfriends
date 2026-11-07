@@ -55,6 +55,7 @@ jobs:
           cp -R build/Build/Products/Release-iphoneos/BonYourFriends.app Payload/
           zip -qry BonYourFriends.ipa Payload
           ls -lh BonYourFriends.ipa
+          plutil -p Payload/BonYourFriends.app/Info.plist | grep -E "CFBundleIdentifier|CFBundleDisplayName|MinimumOSVersion|CFBundleIconName|CFBundleShortVersionString"
 
       - name: Fehlerprotokoll
         if: failure()
