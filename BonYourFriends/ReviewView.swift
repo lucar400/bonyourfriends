@@ -12,7 +12,7 @@ struct ReviewView: View {
             VStack(spacing: 14) {
                 hero
                 VStack(spacing: 10) {
-                    Button("Zu den Karten") { model.startSwiping() }
+                    Button { model.startSwiping() } label: { Label("Let’s split!", systemImage: "rectangle.stack") }
                         .buttonStyle(InkButtonStyle(kind: .dark, height: 54))
                         .disabled(model.items.isEmpty)
                         .opacity(model.items.isEmpty ? 0.4 : 1)

@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import CoreMotion
 
 private let box = CGSize(width: 120, height: 150)
 
@@ -170,6 +171,35 @@ final class MascotPhysics {
     @ObservationIgnored private var grab: CGVector = .zero
     @ObservationIgnored private var lastHaptic: CFTimeInterval = 0
     @ObservationIgnored private let haptic = UIImpactFeedbackGenerator(style: .rigid)
+    @ObservationIgnored private let motion = CMMotionManager()
+    @ObservationIgnored private var shake: CGVector = .zero
+
+    func startMotion() {
+        guard motion.isDeviceMotionAvailable, !motion.isDeviceMotionActive else { return }
+        motion.deviceMotionUpdateInterval = 1.0 / 60
+        motion.startDeviceMotionUpdates(to: .main) { [weak self] data, _ in
+            guard let self, let a = data?.userAcceleration else { return }
+            MainActor.assumeIsolated { self.feel(CGVector(dx: a.x, dy: a.y)) }
+        }
+    }
+
+    func stopMotion() {
+        motion.stopDeviceMotionUpdates()
+        shake = .zero
+    }
+
+    private func feel(_ a: CGVector) {
+        let g = hypot(a.dx, a.dy)
+        shake = g > 0.06 ? CGVector(dx: -a.dx, dy: a.dy) : .zero
+        guard g > 0.06, !dragging, bounds != .zero else { return }
+        if !free {
+            guard g > 0.9, home != .zero else { return }
+            position = CGPoint(x: home.midX, y: home.midY)
+            free = true
+            spin = Double.random(in: -400...400)
+        }
+        start()
+    }
 
     var center: CGPoint {
         free ? position : CGPoint(x: home.midX, y: home.midY)
@@ -256,6 +286,10 @@ final class MascotPhysics {
         last = now
         if dragging { return }
 
+        let push: CGFloat = 6500
+        velocity.dx += shake.dx * push * dt
+        velocity.dy += shake.dy * push * dt
+
         let friction = pow(0.42, dt)
         velocity.dx *= friction
         velocity.dy *= friction
@@ -306,7 +340,7 @@ final class MascotPhysics {
         squash += squashSpeed * CGFloat(dt)
 
         let speed = hypot(velocity.dx, velocity.dy)
-        if speed < 6, abs(spin) < 4, abs(angle) < 0.4, abs(squash) < 0.002, abs(squashSpeed) < 0.02 {
+        if speed < 6, shake == .zero, abs(spin) < 4, abs(angle) < 0.4, abs(squash) < 0.002, abs(squashSpeed) < 0.02 {
             velocity = .zero
             spin = 0
             angle = 0

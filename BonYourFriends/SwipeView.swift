@@ -22,31 +22,41 @@ struct SwipeView: View {
                 .animation(.springPop, value: model.index)
 
             GeometryReader { geo in
-                ZStack {
-                    ForEach(Array(upcoming.enumerated().reversed()), id: \.element.id) { pair in
+                let layers = min(6, max(0, model.items.count - 1))
+                let step: CGFloat = 7
+                let cardHeight = geo.size.height - CGFloat(layers) * step
+                ZStack(alignment: .top) {
+                    ForEach(Array(stack(layers).enumerated().reversed()), id: \.element.id) { pair in
                         let k = pair.offset
                         let item = pair.element
                         let top = k == 0
-                        ItemCard(
-                            item: item,
-                            position: (model.items.firstIndex(of: item) ?? 0) + 1,
-                            total: model.items.count,
-                            count: top ? $count : .constant(item.qty),
-                            progress: top ? progress : .zero,
-                            mood: top ? mood : .neutral,
-                            hop: hop,
-                            coach: top && model.index == 0 && drag == .zero
-                        )
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .scaleEffect(1 - CGFloat(k) * 0.045)
-                        .offset(y: CGFloat(k) * 12)
-                        .rotationEffect(.degrees(top ? Double(drag.width / 18) : 0))
+                        Group {
+                            if k < 2 {
+                                ItemCard(
+                                    item: item,
+                                    position: (model.items.firstIndex(of: item) ?? 0) + 1,
+                                    total: model.items.count,
+                                    count: top ? $count : .constant(item.qty),
+                                    progress: top ? progress : .zero,
+                                    mood: top ? mood : .neutral,
+                                    hop: hop,
+                                    coach: top && model.index == 0 && drag == .zero
+                                )
+                            } else {
+                                PileCard(kind: item.kind)
+                            }
+                        }
+                        .frame(width: geo.size.width, height: cardHeight)
+                        .scaleEffect(1 - CGFloat(k) * 0.016, anchor: .bottom)
+                        .rotationEffect(.degrees(top ? Double(drag.width / 18) : tilt(item.id)))
+                        .offset(y: CGFloat(k) * step)
                         .offset(top ? visibleDrag : .zero)
                         .allowsHitTesting(top && flying == nil)
                         .zIndex(Double(10 - k))
-                        .transition(.asymmetric(insertion: .scale(scale: 0.9).combined(with: .offset(y: 30)), removal: .identity))
+                        .transition(.asymmetric(insertion: .opacity, removal: .identity))
                     }
                 }
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
                 .gesture(dragGesture)
                 .animation(.springSoft, value: model.index)
             }
@@ -66,8 +76,13 @@ struct SwipeView: View {
         .onChange(of: model.index) { _, _ in syncCount() }
     }
 
-    private var upcoming: [Item] {
-        Array(model.items.dropFirst(model.index).prefix(3))
+    private func stack(_ layers: Int) -> [Item] {
+        Array(model.items.dropFirst(model.index).prefix(layers + 1))
+    }
+
+    private func tilt(_ id: Int) -> Double {
+        let s = Double((id * 37) % 7) / 6
+        return (id % 2 == 0 ? 1 : -1) * (0.5 + 1.1 * s)
     }
 
     private var visibleDrag: CGSize {
@@ -187,6 +202,17 @@ struct SwipeView: View {
 
     private func syncCount() {
         count = model.current?.qty ?? 1
+    }
+}
+
+struct PileCard: View {
+    var kind: Kind
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 28, style: .continuous)
+            .fill(kind.tile)
+            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Color.black.opacity(0.04)))
+            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(Palette.ink, lineWidth: 2.5))
     }
 }
 

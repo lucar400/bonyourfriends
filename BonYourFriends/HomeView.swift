@@ -62,6 +62,7 @@ struct HomeView: View {
                     height: geo.size.height + geo.safeAreaInsets.top + geo.safeAreaInsets.bottom
                 )
                 appeared = true
+                mascot.startMotion()
             }
             .onChange(of: geo.size) { _, size in
                 mascot.bounds = CGRect(x: -geo.safeAreaInsets.leading, y: -geo.safeAreaInsets.top, width: size.width + geo.safeAreaInsets.leading + geo.safeAreaInsets.trailing, height: size.height + geo.safeAreaInsets.top + geo.safeAreaInsets.bottom)
@@ -98,7 +99,10 @@ struct HomeView: View {
                 model.scan(images)
             }
         }
-        .onDisappear { mascot.stop() }
+        .onDisappear {
+            mascot.stop()
+            mascot.stopMotion()
+        }
     }
 
     private var hero: some View {
@@ -236,7 +240,7 @@ struct HomeView: View {
             Circle()
                 .fill(Namer.isAvailable ? Palette.olive : Palette.muted)
                 .frame(width: 8, height: 8)
-            Text(Namer.status + " · Männchen lässt sich werfen")
+            Text(Namer.status + " · Männchen werfen oder schütteln")
                 .font(.ui(12, 600))
                 .foregroundStyle(Palette.muted)
         }
