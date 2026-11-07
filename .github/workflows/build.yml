@@ -1,0 +1,66 @@
+name: iPhone-App bauen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode-Version
+        run: xcodebuild -version
+
+      - name: Parser-Test
+        run: |
+          swiftc -o parsercheck Tests/ParserCheck/main.swift BonYourFriends/ReceiptParser.swift BonYourFriends/Models.swift BonYourFriends/Theme.swift
+          ./parsercheck
+
+      - name: Projekt erzeugen
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: App bauen
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project BonYourFriends.xcodeproj \
+            -scheme BonYourFriends \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build | tee build.log | grep -E "error:|warning: .*BonYourFriends|BUILD" || true
+          test -d build/Build/Products/Release-iphoneos/BonYourFriends.app
+
+      - name: IPA verpacken
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/BonYourFriends.app Payload/
+          zip -qry BonYourFriends.ipa Payload
+          ls -lh BonYourFriends.ipa
+
+      - name: Fehlerprotokoll
+        if: failure()
+        run: grep -E "error:" -A3 build.log | head -80 || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BonYourFriends-ipa
+          path: BonYourFriends.ipa
+          retention-days: 14

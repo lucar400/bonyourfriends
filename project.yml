@@ -1,0 +1,33 @@
+name: BonYourFriends
+options:
+  bundleIdPrefix: de.lucar400
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  BonYourFriends:
+    type: application
+    platform: iOS
+    sources:
+      - BonYourFriends
+    info:
+      path: BonYourFriends/Info.plist
+      properties:
+        CFBundleDisplayName: BonFriends
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: Die Kamera wird zum Scannen deiner Kassenzettel verwendet.
+        NSPhotoLibraryUsageDescription: Damit du Fotos von Kassenzetteln aus deiner Mediathek auswählen kannst.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.lucar400.bonyourfriends
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: NO
