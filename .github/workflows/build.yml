@@ -24,7 +24,7 @@ jobs:
 
       - name: Parser-Test
         run: |
-          swiftc -o parsercheck Tests/ParserCheck/main.swift BonYourFriends/ReceiptParser.swift BonYourFriends/Models.swift BonYourFriends/Theme.swift
+          swiftc -target arm64-apple-macos15.0 -o parsercheck Tests/ParserCheck/main.swift BonYourFriends/ReceiptParser.swift BonYourFriends/Models.swift BonYourFriends/Theme.swift BonYourFriends/Components.swift
           ./parsercheck
 
       - name: Projekt erzeugen

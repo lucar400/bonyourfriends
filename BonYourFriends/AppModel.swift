@@ -18,6 +18,11 @@ final class AppModel {
     var error: String?
     var rawText: [String] = []
     var namedByAI = false
+    var appendMode = false
+    var busyImage: UIImage?
+    var lastChoice: Choice?
+
+    @ObservationIgnored private var job: Task<Void, Never>?
 
     var current: Item? {
         index < items.count ? items[index] : nil
@@ -35,39 +40,100 @@ final class AppModel {
         return (mine, sum - mine, sum)
     }
 
-    var metaLine: String {
+    var metaParts: [String] {
         var parts: [String] = []
         if let s = meta.store { parts.append(s) }
         if let d = meta.date { parts.append(d) }
-        if meta.sample { parts.append("Beispiel") }
-        return parts.joined(separator: " · ")
+        if meta.sample { parts.append("Beispielbon") }
+        return parts
     }
 
-    func analyze(_ images: [UIImage]) async {
+    var metaLine: String {
+        metaParts.joined(separator: " · ")
+    }
+
+    var dotStates: [DotState] {
+        items.enumerated().map { i, it in
+            if let d = decisions[it.id] {
+                switch d.state {
+                case .mine: return .mine
+                case .other: return .other
+                case .split: return .split
+                case .part: return .part
+                }
+            }
+            return i == index ? .now : .off
+        }
+    }
+
+    func scan(_ images: [UIImage]) {
         guard !images.isEmpty else { return }
+        busyImage = images.first
+        run { try await TextReader.lines(from: images) }
+    }
+
+    func read(text: String) {
+        let lines = text.components(separatedBy: .newlines)
+        busyImage = nil
+        run { lines }
+    }
+
+    func cancel() {
+        job?.cancel()
+        job = nil
+        busy = false
+    }
+
+    private func run(_ source: @escaping () async throws -> [String]) {
+        job?.cancel()
         busy = true
         error = nil
-        status = "Lese den Bon …"
-        defer { busy = false }
-        do {
-            let lines = try await TextReader.lines(from: images)
-            rawText = lines
-            let parsed = ReceiptParser.parse(lines)
-            guard !parsed.lines.isEmpty else {
-                error = "Auf dem Foto habe ich keine Artikel mit Preis gefunden. Versuch es mit mehr Licht und dem ganzen Bon im Bild."
-                return
+        status = "Cheffe liest den Bon"
+        job = Task { [weak self] in
+            guard let self else { return }
+            defer { if !Task.isCancelled { self.busy = false } }
+            do {
+                let lines = try await source()
+                if Task.isCancelled { return }
+                self.rawText = lines
+                let parsed = ReceiptParser.parse(lines)
+                guard !parsed.lines.isEmpty else {
+                    self.error = "Auf dem Bon habe ich keine Artikel mit Preis gefunden. Versuch es mit mehr Licht und dem ganzen Bon im Bild."
+                    return
+                }
+                self.status = Namer.isAvailable ? "Die KI schreibt die Namen aus" : "Sortiere die Artikel"
+                let names = await Namer.name(parsed.lines, store: parsed.meta.store)
+                if Task.isCancelled { return }
+                let fresh = ItemBuilder.build(parsed.lines, names: names, total: parsed.meta.total)
+                self.namedByAI = !names.isEmpty
+                if self.appendMode && !self.items.isEmpty {
+                    let merged = self.items + fresh
+                    self.items = merged.enumerated().map { i, it in
+                        Item(id: i + 1, name: it.name, raw: it.raw, detail: it.detail, cents: it.cents, qty: it.qty, kind: it.kind, discount: it.discount, deposit: it.deposit)
+                    }
+                    self.meta = Self.combine(self.meta, parsed.meta)
+                } else {
+                    self.items = fresh
+                    self.meta = parsed.meta
+                }
+                self.appendMode = false
+                self.decisions = [:]
+                self.index = 0
+                withAnimation(.springSoft) { self.screen = .review }
+            } catch {
+                if Task.isCancelled { return }
+                self.error = "Die Texterkennung hat nicht geklappt: \(error.localizedDescription)"
             }
-            status = Namer.isAvailable ? "KI räumt die Namen auf …" : "Sortiere die Artikel …"
-            let names = await Namer.name(parsed.lines, store: parsed.meta.store)
-            namedByAI = !names.isEmpty
-            items = ItemBuilder.build(parsed.lines, names: names, total: parsed.meta.total)
-            meta = parsed.meta
-            decisions = [:]
-            index = 0
-            withAnimation(.snappy) { screen = .review }
-        } catch {
-            self.error = "Die Texterkennung hat nicht geklappt: \(error.localizedDescription)"
         }
+    }
+
+    private static func combine(_ a: ReceiptMeta, _ b: ReceiptMeta) -> ReceiptMeta {
+        var m = ReceiptMeta()
+        let stores = [a.store, b.store].compactMap { $0 }
+        m.store = stores.isEmpty ? nil : stores.joined(separator: " + ")
+        m.date = a.date ?? b.date
+        if let x = a.total, let y = b.total { m.total = x + y }
+        return m
     }
 
     func loadDemo() {
@@ -77,7 +143,8 @@ final class AppModel {
         decisions = [:]
         index = 0
         namedByAI = false
-        withAnimation(.snappy) { screen = .review }
+        rawText = []
+        withAnimation(.springSoft) { screen = .review }
     }
 
     func remove(_ item: Item) {
@@ -90,10 +157,21 @@ final class AppModel {
         items[i].name = n
     }
 
+    func addAnother() {
+        appendMode = true
+        error = nil
+        withAnimation(.springSoft) { screen = .home }
+    }
+
+    func cancelAppend() {
+        appendMode = false
+        withAnimation(.springSoft) { screen = .review }
+    }
+
     func startSwiping() {
         decisions = [:]
         index = 0
-        withAnimation(.snappy) { screen = items.isEmpty ? .review : .swipe }
+        withAnimation(.springSoft) { screen = items.isEmpty ? .review : .swipe }
     }
 
     func decide(_ choice: Choice, count: Int? = nil) {
@@ -103,9 +181,10 @@ final class AppModel {
         } else {
             decisions[it.id] = Decision.from(choice, item: it)
         }
+        lastChoice = choice
         index += 1
         if index >= items.count {
-            withAnimation(.snappy) { screen = .result }
+            withAnimation(.springSoft) { screen = .result }
         }
     }
 
@@ -114,8 +193,30 @@ final class AppModel {
         index -= 1
         decisions[items[index].id] = nil
         if screen == .result {
-            withAnimation(.snappy) { screen = .swipe }
+            withAnimation(.springSoft) { screen = .swipe }
         }
+    }
+
+    func cycle(_ item: Item) {
+        let order: [Choice] = [.mine, .other, .split]
+        let now: Choice = switch decisions[item.id]?.state {
+        case .mine: .mine
+        case .other: .other
+        case .split: .split
+        default: .split
+        }
+        let next = order[(order.firstIndex(of: now)! + 1) % order.count]
+        decisions[item.id] = Decision.from(next, item: item)
+    }
+
+    func setCount(_ item: Item, _ n: Int) {
+        decisions[item.id] = Decision.from(count: n, item: item)
+    }
+
+    func goHome() {
+        appendMode = false
+        error = nil
+        withAnimation(.springSoft) { screen = .home }
     }
 
     func reset() {
@@ -124,7 +225,8 @@ final class AppModel {
         index = 0
         meta = ReceiptMeta()
         error = nil
-        withAnimation(.snappy) { screen = .home }
+        appendMode = false
+        withAnimation(.springSoft) { screen = .home }
     }
 
     var summaryText: String {

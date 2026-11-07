@@ -4,8 +4,9 @@ enum ReceiptParser {
     static let saveRe = "preisvorteil|rabatt|coupon|gutschein|nachlass|ersparnis|aktionsrabatt|sofortrabatt"
     static let infoRe = "sie sparen|ersp.rung|gespart|treuepunkte|punkte gesammelt|payback|bonuspunkte"
     static let depositRe = "pfand|leergut"
-    static let totalRe = "^\\s*(summe|gesamtsumme|gesamtbetrag|zu zahlen|endsumme)\\b"
-    static let skipRe = "^\\s*(zwischensumme|zw\\.?\\s?-?summe|mwst|steuer|netto|brutto|bar\\b|ec\\b|ec-|karte|kartenzahlung|girocard|visa|mastercard|maestro|r(ü|u)ckgeld|gegeben|posten|anzahl|eur\\s*$|uid|st\\.?\\s?-?nr|tel\\b|www)"
+    static let totalRe = "(?<![a-zäöüß])(s\\s?[uü]\\s?m\\s?[mn]?\\s?e|gesamtsumme|gesamtbetrag|gesamt|zu\\s?zahlen|endsumme|total|zahlbetrag)(?![a-zäöüß])"
+    static let skipRe = "^\\s*(zw\\.?\\s?-?summe|posten|anzahl|eur\\s*$|tel\\b|www)"
+    static let stopRe = "zwischensumme|mwst|\\bust\\b|ust-id|steuer|\\bnetto\\b|brutto|\\bbar\\b|\\bec\\b|ec-cash|\\bkarte\\b|kartenzahlung|girocard|kontaktlos|visa|mastercard|maestro|r(ü|u)ckgeld|gegeben|\\bgeg\\.|bezahlt|zahlung|beleg|terminal|trace|genehmigung|autorisierung|transaktion|\\btse\\b|signatur|\\buid\\b|st\\.?\\s?-?nr|bon-?nr|kasse\\s?\\d|vielen dank|danke"
     static let stores = ["REWE", "EDEKA", "ALDI", "LIDL", "KAUFLAND", "NETTO", "PENNY", "NORMA", "TEGUT", "GLOBUS", "MARKTKAUF", "ROSSMANN", "DM", "HIT", "FAMILA", "WASGAU", "DENNS", "ALNATURA", "BIOMARKT", "REAL"]
 
     static let priceRe = "(?<![\\d.,])(-)?\\s?(\\d{1,4})[,.](\\d{2})(-)?(?:\\s*\\*|\\s*€|\\s*EUR|\\s+[A-Z]{1,2}|\\s+\\d)?\\s*$"
@@ -20,17 +21,30 @@ enum ReceiptParser {
 
         var out: [RawLine] = []
         var pending: String?
+        var awaitTotal = false
 
         for original in input {
             let line = original.trimmingCharacters(in: .whitespaces)
             if line.isEmpty { continue }
 
             if matches(line, totalRe) {
-                meta.total = priceAtEnd(line)?.cents ?? anyPrice(line)
-                if out.count > 0 { break }
+                if let t = priceAtEnd(line)?.cents ?? anyPrice(line) {
+                    meta.total = t
+                    if out.count > 0 { break }
+                } else if out.count > 0 {
+                    awaitTotal = true
+                }
+                pending = nil
                 continue
             }
-            if matches(line, skipRe) || matches(line, infoRe) {
+            if awaitTotal {
+                if let t = priceAtEnd(line)?.cents ?? anyPrice(line) {
+                    meta.total = t
+                    break
+                }
+                continue
+            }
+            if matches(line, skipRe) || matches(line, infoRe) || matches(line, stopRe) || isTaxRow(line) {
                 pending = nil
                 continue
             }
@@ -75,14 +89,27 @@ enum ReceiptParser {
                     detail = "\(n) × " + euroPlain(cents(m[2])) + " €"
                     text = text.replacingOccurrences(of: m[0], with: "").trimmingCharacters(in: .whitespaces)
                 }
+                text = text.replacingOccurrences(of: "(?i)\\b(eur|euro)\\b|€", with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
                 if text.isEmpty || !text.contains(where: { $0.isLetter }) {
-                    guard let name = pending else { continue }
+                    guard let name = pending else {
+                        let running = out.reduce(0) { $0 + $1.cents }
+                        if out.count >= 2, p.cents > 0, abs(p.cents - running) <= 1 {
+                            meta.total = p.cents
+                            break
+                        }
+                        continue
+                    }
                     text = name
                 }
                 pending = nil
                 if p.cents == 0 { continue }
                 var c = p.cents
                 if matches(text, saveRe) { c = -abs(c) }
+                let running = out.reduce(0) { $0 + $1.cents }
+                if out.count >= 3, c > 0, abs(c - running) <= 1, !matches(text, depositRe) {
+                    meta.total = c
+                    break
+                }
                 out.append(RawLine(raw: String(text.prefix(40)), cents: c, qty: qty, detail: detail))
                 continue
             }
@@ -92,6 +119,13 @@ enum ReceiptParser {
             }
         }
         return (out, meta)
+    }
+
+    static func isTaxRow(_ line: String) -> Bool {
+        if matches(line, "^[A-D]\\s*[=:]?\\s*\\d{1,2}([,.]\\d{1,2})?\\s*%") { return true }
+        guard line.contains("%") else { return false }
+        guard let re = try? NSRegularExpression(pattern: "\\d{1,4}[,.]\\d{2}(?!\\d)") else { return false }
+        return re.numberOfMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length)) >= 2
     }
 
     static func store(in lines: [String]) -> String? {

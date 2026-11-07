@@ -5,88 +5,52 @@ struct ReviewView: View {
     @State private var editing: Item?
     @State private var newName = ""
     @State private var showRaw = false
+    @State private var shown = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button {
-                    model.reset()
-                } label: {
-                    Image(systemName: "chevron.left")
+        ScrollView {
+            VStack(spacing: 14) {
+                hero
+                VStack(spacing: 10) {
+                    Button("Zu den Karten") { model.startSwiping() }
+                        .buttonStyle(InkButtonStyle(kind: .dark, height: 54))
+                        .disabled(model.items.isEmpty)
+                        .opacity(model.items.isEmpty ? 0.4 : 1)
+                    HStack(spacing: 10) {
+                        Button("Weiteren Bon hinzufügen") { model.addAnother() }
+                            .buttonStyle(InkButtonStyle(kind: .light, height: 54))
+                        Button("Neu einlesen") { model.reset() }
+                            .buttonStyle(InkButtonStyle(kind: .light, height: 54))
+                    }
                 }
-                .buttonStyle(RoundIconButtonStyle(fill: Palette.card, size: 44))
-                Spacer()
-                if !model.rawText.isEmpty && !model.meta.sample {
-                    Button(showRaw ? "Artikel" : "Rohtext") { showRaw.toggle() }
-                        .font(.rounded(15, .semibold))
-                        .foregroundStyle(Palette.ink)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Stimmt das so?")
-                    .font(.rounded(34, .heavy))
-                    .foregroundStyle(Palette.ink)
-                Text(subtitle)
-                    .font(.rounded(15, .medium))
-                    .foregroundStyle(Palette.muted)
-                check
-                    .padding(.top, 6)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
-
-            if showRaw {
-                ScrollView {
+                if showRaw {
                     Text(model.rawText.joined(separator: "\n"))
                         .font(.system(.footnote, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
-                        .inked(Palette.card, radius: 18, shadow: 3)
-                        .padding(.horizontal, 20)
+                        .inked(Palette.card, radius: 20, border: 2.5, shadow: 3)
+                } else {
+                    list
                 }
-            } else {
-                List {
-                    ForEach(model.items) { it in
-                        ItemRow(item: it)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                newName = it.name
-                                editing = it
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    withAnimation { model.remove(it) }
-                                } label: {
-                                    Label("Entfernen", systemImage: "trash")
-                                }
-                            }
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                Text("Preisvorteil und Pfand sind schon beim Artikel darüber eingerechnet. Tippen zum Umbenennen, mit dem Kreuz entfernst du Zeilen, die nicht zum Einkauf gehören.")
+                    .font(.ui(13, 500))
+                    .foregroundStyle(Palette.muted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 6)
+                if !model.rawText.isEmpty && !model.meta.sample {
+                    Button(showRaw ? "Artikelliste zeigen" : "Erkannten Rohtext zeigen") {
+                        withAnimation(.springSoft) { showRaw.toggle() }
                     }
-                    Text("Tippen zum Umbenennen, nach links wischen zum Entfernen. Pfand und Preisvorteile sind beim Artikel darüber schon eingerechnet.")
-                        .font(.rounded(13, .medium))
-                        .foregroundStyle(Palette.muted)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                    .buttonStyle(LinkStyle())
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
             }
-
-            Button("Los geht's · \(model.items.count) Karten") {
-                model.startSwiping()
-            }
-            .buttonStyle(ChunkyButtonStyle(fill: Palette.yellow))
-            .disabled(model.items.isEmpty)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 24)
         }
+        .scrollIndicators(.hidden)
+        .onAppear { shown = true }
         .alert("Name ändern", isPresented: Binding(get: { editing != nil }, set: { if !$0 { editing = nil } })) {
             TextField("Produktname", text: $newName)
             Button("Speichern") {
@@ -95,76 +59,155 @@ struct ReviewView: View {
             }
             Button("Abbrechen", role: .cancel) { editing = nil }
         } message: {
-            if let e = editing, e.raw != e.name {
+            if let e = editing, e.raw.lowercased() != e.name.lowercased() {
                 Text("Auf dem Bon: \(e.raw)")
             }
         }
     }
 
-    private var subtitle: String {
-        var parts: [String] = []
-        if !model.metaLine.isEmpty { parts.append(model.metaLine) }
-        parts.append("\(model.items.count) Artikel")
-        if model.namedByAI { parts.append("Namen von der KI") }
-        return parts.joined(separator: " · ")
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Lab(text: subtitle)
+            HStack(spacing: 10) {
+                Highlight(text: "\(model.items.count) Artikel", size: 34)
+                Headline(plain: "erkannt", size: 34)
+            }
+            .padding(.vertical, 4)
+            check
+                .padding(.top, 4)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .inked(Palette.hero, radius: 28)
     }
 
-    @ViewBuilder
+    private var subtitle: String {
+        var parts = model.metaParts
+        if model.namedByAI { parts.append("Namen von der KI") }
+        return parts.isEmpty ? "Dein Bon" : parts.joined(separator: " · ")
+    }
+
     private var check: some View {
-        if let total = model.meta.total {
-            let diff = model.sum - total
-            HStack(spacing: 8) {
-                Image(systemName: diff == 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                Text(diff == 0 ? "Passt zur Summe \(euro(total))" : "Summe auf dem Bon \(euro(total)), erkannt \(euro(model.sum))")
-            }
-            .font(.rounded(14, .bold))
-            .foregroundStyle(Palette.ink)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .inked(diff == 0 ? Palette.mint : Palette.salmon, radius: 999, shadow: 2)
+        let sum = model.sum
+        let total = model.meta.total
+        let ok = total == sum
+        let msg: String
+        if let total {
+            msg = ok ? "Summe stimmt mit dem Bon überein: \(euro(sum))" : "Artikel \(euro(sum)), Bon \(euro(total)). Differenz \(euro(sum - total)). Prüfe die Liste."
         } else {
-            Text("Gesamt \(euro(model.sum))")
-                .font(.rounded(14, .bold))
-                .foregroundStyle(Palette.ink)
+            msg = "Summe \(euro(sum)). Bon-Betrag nicht erkannt."
         }
+        return HStack(spacing: 12) {
+            Text(msg)
+                .font(.ui(15, 600))
+                .foregroundStyle(Palette.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: ok ? "checkmark" : "exclamationmark")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Palette.ink)
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(ok ? Palette.yellow : Palette.salmon))
+                .overlay(Circle().strokeBorder(Palette.ink, lineWidth: 2))
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Color.white))
+        .overlay(Capsule().strokeBorder(Palette.ink, lineWidth: 2.5))
+    }
+
+    private var list: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(model.items.enumerated()), id: \.element.id) { i, it in
+                if i > 0 { DashedLine() }
+                ReviewRow(item: it) {
+                    withAnimation(.springSoft) { model.remove(it) }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    newName = it.name
+                    editing = it
+                }
+                .opacity(shown ? 1 : 0)
+                .offset(y: shown ? 0 : 14)
+                .animation(.springHard.delay(Double(min(i, 8)) * 0.025), value: shown)
+                .transition(.asymmetric(insertion: .opacity, removal: .scale(scale: 0.9).combined(with: .opacity)))
+            }
+        }
+        .padding(4)
+        .inked(Palette.card, radius: 26)
     }
 }
 
-struct ItemRow: View {
+struct DashedLine: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(height: 2)
+            .overlay(
+                GeometryReader { g in
+                    Path { p in
+                        p.move(to: CGPoint(x: 0, y: 1))
+                        p.addLine(to: CGPoint(x: g.size.width, y: 1))
+                    }
+                    .stroke(Palette.line, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                }
+            )
+            .padding(.horizontal, 6)
+    }
+}
+
+struct ReviewRow: View {
     var item: Item
+    var onRemove: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(item.kind.emoji)
-                .font(.system(size: 24))
-                .frame(width: 46, height: 46)
-                .inked(item.kind.tile, radius: 999, shadow: 2)
+            Thumb(kind: item.kind, size: 48)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
-                    .font(.rounded(16, .bold))
+                    .font(.ui(16, 700))
                     .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
-                Text(secondary)
-                    .font(.rounded(13, .medium))
-                    .foregroundStyle(Palette.muted)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(.ui(12, 500))
+                        .foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
             Text(euro(item.cents))
-                .font(.rounded(16, .bold))
+                .font(.ui(16, 600))
                 .monospacedDigit()
-                .foregroundStyle(Palette.ink)
+                .foregroundStyle(item.cents < 0 ? Palette.mineText : Palette.ink)
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Palette.ink)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(PressScaleStyle())
+            .accessibilityLabel("\(item.name) entfernen")
         }
-        .padding(12)
-        .inked(Palette.card, radius: 20, shadow: 3)
+        .padding(.leading, 10)
+        .padding(.trailing, 4)
+        .padding(.vertical, 10)
     }
 
-    private var secondary: String {
+    private var detail: String {
         var parts: [String] = []
         if !item.detail.isEmpty { parts.append(item.detail) }
-        if item.discount != 0 { parts.append("Preisvorteil " + euro(item.discount)) }
-        if item.deposit != 0 { parts.append("Pfand " + euro(item.deposit)) }
-        if parts.isEmpty && item.raw != item.name { parts.append(item.raw) }
-        return parts.isEmpty ? " " : parts.joined(separator: " · ")
+        if item.discount != 0 { parts.append("Preisvorteil " + signed(item.discount)) }
+        if item.deposit != 0 { parts.append("Pfand " + signed(item.deposit)) }
+        if !item.raw.isEmpty, item.raw.lowercased() != item.name.lowercased() { parts.append("Bon: " + item.raw) }
+        return parts.joined(separator: " · ")
     }
+}
+
+func signed(_ cents: Int) -> String {
+    (cents < 0 ? "−" : "+") + euro(abs(cents))
 }

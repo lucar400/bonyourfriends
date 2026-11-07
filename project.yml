@@ -21,6 +21,13 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        UIAppFonts:
+          - BYFText-500.ttf
+          - BYFText-600.ttf
+          - BYFText-700.ttf
+          - BYFText-800.ttf
+          - BYFDisplay-800.ttf
+          - BYFHand-700.ttf
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSCameraUsageDescription: Die Kamera wird zum Scannen deiner Kassenzettel verwendet.

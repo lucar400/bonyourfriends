@@ -19,10 +19,10 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Palette.paper.ignoresSafeArea()
+            Palette.screen.ignoresSafeArea()
             switch model.screen {
             case .home:
-                HomeView().transition(.opacity.combined(with: .scale(scale: 0.98)))
+                HomeView().transition(.opacity.combined(with: .offset(y: 18)))
             case .review:
                 ReviewView().transition(.move(edge: .trailing).combined(with: .opacity))
             case .swipe:
