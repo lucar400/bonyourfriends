@@ -129,7 +129,7 @@ final class AppModel {
 
     var summaryText: String {
         let t = totals
-        var lines = ["Bon your Friends" +(metaLine.isEmpty ? "" : " · " + metaLine), "Mein Anteil: " + euro(t.mine) + " von " + euro(t.all), ""]
+        var lines = ["Bon your Friends" + (metaLine.isEmpty ? "" : " · " + metaLine), "Mein Anteil: " + euro(t.mine) + " von " + euro(t.all), ""]
         for it in items {
             guard let d = decisions[it.id], d.state != .other else { continue }
             var note = ""

@@ -34,7 +34,6 @@ jobs:
 
       - name: App bauen
         run: |
-          set -o pipefail
           xcodebuild \
             -project BonYourFriends.xcodeproj \
             -scheme BonYourFriends \
@@ -45,8 +44,10 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build | tee build.log | grep -E "error:|warning: .*BonYourFriends|BUILD" || true
-          test -d build/Build/Products/Release-iphoneos/BonYourFriends.app
+            build > build.log 2>&1 || true
+          grep -E "error:|warning: .*BonYourFriends/|BUILD" build.log | sort -u || true
+          grep -q "BUILD SUCCEEDED" build.log
+          test -f build/Build/Products/Release-iphoneos/BonYourFriends.app/BonYourFriends
 
       - name: IPA verpacken
         run: |
